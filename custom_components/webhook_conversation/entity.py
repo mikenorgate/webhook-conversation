@@ -23,12 +23,14 @@ from .const import (
     CONF_OUTPUT_FIELD,
     CONF_PASSWORD,
     CONF_PROMPT,
+    CONF_STREAMING_END_VALUE,
     CONF_TIMEOUT,
     CONF_USERNAME,
     CONF_WEBHOOK_URL,
     DEFAULT_AUTH_TYPE,
     DEFAULT_ENABLE_STREAMING,
     DEFAULT_OUTPUT_FIELD,
+    DEFAULT_STREAMING_END_VALUE,
     DEFAULT_TIMEOUT,
     DOMAIN,
     MANUFACTURER,
@@ -89,6 +91,9 @@ class WebhookConversationLLMBaseEntity(WebhookConversationBaseEntity):
         self._system_prompt = subentry.data[CONF_PROMPT]
         self._streaming_enabled: bool = subentry.data.get(
             CONF_ENABLE_STREAMING, DEFAULT_ENABLE_STREAMING
+        )
+        self._streaming_end_value: str = subentry.data.get(
+            CONF_STREAMING_END_VALUE, DEFAULT_STREAMING_END_VALUE
         )
 
     async def _send_payload(self, payload: WebhookConversationPayload) -> Any:
@@ -157,7 +162,7 @@ class WebhookConversationLLMBaseEntity(WebhookConversationBaseEntity):
                                 and "content" in chunk_data
                             ):
                                 yield chunk_data["content"]
-                            elif chunk_data.get("type") == "end":
+                            elif chunk_data.get("type") == self._streaming_end_value:
                                 break
                         except json.JSONDecodeError:
                             _LOGGER.warning(

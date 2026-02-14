@@ -70,6 +70,7 @@ After the integration is added, you'll see the "Webhook Conversation" integratio
    - **Output Field**: The field name in the webhook response containing the reply (default: "output")
    - **Timeout**: The timeout in seconds for waiting for a response (default: 30 seconds, range: 1-300 seconds)
    - **Enable Response Streaming**: Enable real-time streaming of responses as they are generated (default: disabled)
+   - **Streaming End Value**: The value in the 'type' field that signals the end of streaming (default: "end")
    - **System Prompt**: A custom system prompt to provide additional context or instructions to your AI model
 
 2. **Add AI Task**: Click the **"Add Entry"** button on the integration page and select **"AI Task"** to create a webhook-based AI task handler. Configure it with:
@@ -77,6 +78,7 @@ After the integration is added, you'll see the "Webhook Conversation" integratio
    - **Output Field**: The field name in the webhook response containing the reply (default: "output")
    - **Timeout**: The timeout in seconds for waiting for a response (default: 30 seconds, range: 1-300 seconds)
    - **Enable Response Streaming**: Enable real-time streaming of responses as they are generated (default: disabled)
+   - **Streaming End Value**: The value in the 'type' field that signals the end of streaming (default: "end")
    - **System Prompt**: A custom system prompt to provide additional context or instructions to your AI model
 
 3. **Add TTS (Text-to-Speech)**: Click the **"Add Entry"** button on the integration page and select **"TTS"** to create a webhook-based text-to-speech service. Configure it with:
@@ -288,6 +290,8 @@ When streaming is enabled, your webhook endpoint should return responses in a st
 {"type": "item", "content": " and more content"}
 {"type": "end"}
 ```
+
+> **Note:** The end value (`"end"` in the example above) can be customized in the integration configuration. For example, you could use `"complete"`, `"done"`, or any other value that matches your webhook's streaming response format. The field name (`"type"`) remains fixed, but the value that signals the end of the stream is configurable.
 
 #### Example n8n Streaming Setup
 

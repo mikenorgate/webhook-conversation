@@ -14,7 +14,11 @@
             "prompt": "System Prompt",
             "timeout": "Request timeout (seconds)",
             "enable_streaming": "Enable response streaming",
+            "streaming_end_value": "Streaming end value",
             "auth_type": "Authentication type"
+          },
+          "data_description": {
+            "streaming_end_value": "The value in the 'type' field that indicates the stream has ended."
           }
         },
         "auth": {
@@ -50,7 +54,11 @@
             "prompt": "System Prompt",
             "timeout": "Request timeout (seconds)",
             "enable_streaming": "Enable response streaming",
+            "streaming_end_value": "Streaming end value",
             "auth_type": "Authentication type"
+          },
+          "data_description": {
+            "streaming_end_value": "The value in the 'type' field that indicates the stream has ended."
           }
         },
         "auth": {

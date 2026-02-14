@@ -31,6 +31,7 @@ from .const import (
     CONF_OUTPUT_FIELD,
     CONF_PASSWORD,
     CONF_PROMPT,
+    CONF_STREAMING_END_VALUE,
     CONF_SUPPORTED_LANGUAGES,
     CONF_TIMEOUT,
     CONF_USERNAME,
@@ -43,6 +44,7 @@ from .const import (
     DEFAULT_OUTPUT_FIELD,
     DEFAULT_PROMPT,
     DEFAULT_STT_NAME,
+    DEFAULT_STREAMING_END_VALUE,
     DEFAULT_SUPPORTED_LANGUAGES,
     DEFAULT_TIMEOUT,
     DEFAULT_TTS_NAME,
@@ -141,6 +143,15 @@ def _get_subentry_schema(
                     },
                     default=DEFAULT_ENABLE_STREAMING,
                 ): bool,
+                vol.Optional(
+                    CONF_STREAMING_END_VALUE,
+                    description={
+                        "suggested_value": options.get(
+                            CONF_STREAMING_END_VALUE, DEFAULT_STREAMING_END_VALUE
+                        )
+                    },
+                    default=DEFAULT_STREAMING_END_VALUE,
+                ): str,
             }
         )
     elif subentry_type in ("tts", "stt"):
