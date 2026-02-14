@@ -151,7 +151,7 @@ def _get_subentry_schema(
                         )
                     },
                     default=DEFAULT_STREAMING_END_VALUE,
-                ): str,
+                ): TextSelector(),
             }
         )
     elif subentry_type in ("tts", "stt"):
