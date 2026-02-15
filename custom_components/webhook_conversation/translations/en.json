@@ -14,11 +14,13 @@
             "prompt": "System Prompt",
             "timeout": "Request timeout (seconds)",
             "enable_streaming": "Enable response streaming",
-            "streaming_end_value": "Streaming end value",
+            "streaming_multiple_messages": "Enable multiple messages in stream",
+            "enforce_sentence_terminators": "Enforce sentence terminators",
             "auth_type": "Authentication type"
           },
           "data_description": {
-            "streaming_end_value": "The value in the 'type' field that indicates the stream has ended."
+            "streaming_multiple_messages": "Allow the webhook to send multiple separate assistant messages in one streaming response. Each message is separated by a {\"type\": \"end\"} token.",
+            "enforce_sentence_terminators": "Automatically add periods to messages that don't end with . ! or ? - critical for optimal TTS streaming with wyoming_openai pySBD sentence detection"
           }
         },
         "auth": {
@@ -54,11 +56,13 @@
             "prompt": "System Prompt",
             "timeout": "Request timeout (seconds)",
             "enable_streaming": "Enable response streaming",
-            "streaming_end_value": "Streaming end value",
+            "streaming_multiple_messages": "Enable multiple messages in stream",
+            "enforce_sentence_terminators": "Enforce sentence terminators",
             "auth_type": "Authentication type"
           },
           "data_description": {
-            "streaming_end_value": "The value in the 'type' field that indicates the stream has ended."
+            "streaming_multiple_messages": "Allow the webhook to send multiple separate assistant messages in one streaming response. For AI tasks, all messages are concatenated into one result.",
+            "enforce_sentence_terminators": "Automatically add periods to messages that don't end with . ! or ? for proper sentence completion"
           }
         },
         "auth": {

@@ -70,7 +70,8 @@ After the integration is added, you'll see the "Webhook Conversation" integratio
    - **Output Field**: The field name in the webhook response containing the reply (default: "output")
    - **Timeout**: The timeout in seconds for waiting for a response (default: 30 seconds, range: 1-300 seconds)
    - **Enable Response Streaming**: Enable real-time streaming of responses as they are generated (default: disabled)
-   - **Streaming End Value**: The value in the 'type' field that signals the end of streaming (default: "end")
+   - **Enable Multiple Messages in Stream**: Allow the webhook to send multiple separate messages in one stream (default: disabled)
+   - **Message separator for TTS**: Text inserted between messages for natural pauses in TTS (default: ". ")
    - **System Prompt**: A custom system prompt to provide additional context or instructions to your AI model
 
 2. **Add AI Task**: Click the **"Add Entry"** button on the integration page and select **"AI Task"** to create a webhook-based AI task handler. Configure it with:
@@ -78,7 +79,8 @@ After the integration is added, you'll see the "Webhook Conversation" integratio
    - **Output Field**: The field name in the webhook response containing the reply (default: "output")
    - **Timeout**: The timeout in seconds for waiting for a response (default: 30 seconds, range: 1-300 seconds)
    - **Enable Response Streaming**: Enable real-time streaming of responses as they are generated (default: disabled)
-   - **Streaming End Value**: The value in the 'type' field that signals the end of streaming (default: "end")
+   - **Enable Multiple Messages in Stream**: Allow the webhook to send multiple separate messages in one stream. For AI tasks, all messages are concatenated (default: disabled)
+   - **Message separator**: Text inserted between messages (default: ". ")
    - **System Prompt**: A custom system prompt to provide additional context or instructions to your AI model
 
 3. **Add TTS (Text-to-Speech)**: Click the **"Add Entry"** button on the integration page and select **"TTS"** to create a webhook-based text-to-speech service. Configure it with:
@@ -97,6 +99,101 @@ After the integration is added, you'll see the "Webhook Conversation" integratio
 
 > [!NOTE]
 > You can add multiple conversation agents, AI task handlers, TTS services, and STT services by repeating steps 2-4. Each can be configured with different webhook URLs and settings to support various use cases.
+
+## TTS Streaming Setup
+
+For optimal voice assistant response times with incremental audio playback, follow these steps to enable TTS streaming.
+
+### Requirements
+
+- ✅ Wyoming TTS integration configured in Home Assistant
+- ✅ [wyoming_openai](https://github.com/roryeckel/wyoming_openai) proxy server
+- ✅ Speaches, OpenAI, or compatible TTS backend
+
+### Quick Setup
+
+#### 1. Configure wyoming_openai with streaming enabled
+
+The critical configuration is `TTS_STREAMING_MODELS` which enables pySBD sentence boundary detection:
+
+```yaml
+services:
+  wyoming_openai:
+    environment:
+      TTS_OPENAI_URL: http://speaches:8000/v1
+      TTS_MODELS: "speaches-ai/Kokoro-82M-v1.0-ONNX"
+      TTS_STREAMING_MODELS: "speaches-ai/Kokoro-82M-v1.0-ONNX"  # ← This enables streaming!
+```
+
+**Without `TTS_STREAMING_MODELS`**: All messages buffered, audio plays after delay  
+**With `TTS_STREAMING_MODELS`**: Messages play incrementally as sentences complete
+
+#### 2. Configure webhook-conversation
+
+- ✅ **Enable Response Streaming**: ON
+- ✅ **Enforce Sentence Terminators**: ON (recommended - automatically adds periods)
+
+#### 3. Ensure n8n messages end with punctuation
+
+```javascript
+// Your n8n workflow output:
+{
+  "type": "item",
+  "content": "One moment while I process your request."  // ← period is critical
+}
+```
+
+If you enable "Enforce Sentence Terminators", periods are added automatically.
+
+#### 4. Restart and reload
+
+```bash
+# Restart wyoming_openai
+docker compose restart wyoming_openai
+
+# In Home Assistant:
+# Settings → Devices & Services → Wyoming → Reload
+```
+
+### How It Works
+
+**Timeline with streaming enabled:**
+```
+T+0.0s  User stops speaking
+T+0.5s  🔊 "One moment while I process your request" starts playing
+T+2.0s  First message finishes
+        [Natural 1-2s pause while LLM processes]
+T+3.5s  🔊 LLM response starts playing sentence-by-sentence
+```
+
+**Without streaming:**
+```
+T+0.0s  User stops speaking
+T+3.0s  🔊 ALL messages play together (user waited 3 seconds)
+```
+
+### Troubleshooting
+
+**Problem**: All messages play at once after long delay
+
+**Solutions**:
+1. ✅ Verify `TTS_STREAMING_MODELS` is set in wyoming_openai config
+2. ✅ Restart wyoming_openai: `docker compose restart wyoming_openai`
+3. ✅ Reload Wyoming integration: Settings → Devices & Services → Wyoming → Reload
+4. ✅ Check wyoming_openai logs: `docker logs wyoming_openai | grep "ready sentences"`
+   - Should see: `Detected 1 ready sentences for immediate synthesis`
+5. ✅ Verify messages end with `.` `!` or `?` (or enable "Enforce Sentence Terminators")
+
+**Problem**: First message doesn't play immediately
+
+**Solutions**:
+1. ✅ Enable "Enforce Sentence Terminators" in webhook-conversation config
+2. ✅ Or manually add period to first message in n8n workflow
+3. ✅ Check HA logs: Settings → System → Logs, filter: `webhook_conversation`
+
+For comprehensive troubleshooting and testing instructions, see [TESTING.md](TESTING.md).
+
+For architecture details and how TTS streaming works, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### n8n Workflow Setup
 
@@ -291,7 +388,172 @@ When streaming is enabled, your webhook endpoint should return responses in a st
 {"type": "end"}
 ```
 
-> **Note:** The end value (`"end"` in the example above) can be customized in the integration configuration. For example, you could use `"complete"`, `"done"`, or any other value that matches your webhook's streaming response format. The field name (`"type"`) remains fixed, but the value that signals the end of the stream is configurable.
+The format uses:
+- `{"type": "item", "content": "..."}` for content chunks
+- `{"type": "end"}` to signal the end of a message
+
+**For single message streaming:** Only `item` and `end` tokens are required.
+
+### Multiple Messages in Streaming
+
+When **Enable Multiple Messages in Stream** is enabled, your webhook can send multiple separate assistant messages within a single streaming response. This is useful for providing incremental status updates as your workflow processes the request.
+
+**How it works:**
+
+1. Signal the start of a message with `{"type": "begin"}`
+2. Send message content with `{"type": "item", "content": "..."}`
+3. End the message with `{"type": "end"}`
+4. Repeat steps 1-3 for additional messages
+5. Close the HTTP connection when done
+
+**Required token format for multiple messages:**
+- `{"type": "begin"}` - Signals the start of a new message (required)
+- `{"type": "item", "content": "..."}` - Content chunks
+- `{"type": "end"}` - Signals the end of the current message
+
+**Example: Three separate messages**
+
+```json
+{"type": "begin"}
+{"type": "item", "content": "Analyzing your request"}
+{"type": "item", "content": "..."}
+{"type": "end"}
+
+{"type": "begin"}
+{"type": "item", "content": "I found 3 lights in the living room"}
+{"type": "end"}
+
+{"type": "begin"}
+{"type": "item", "content": "I've turned on all the lights"}
+{"type": "end"}
+```
+
+**Result:** The user sees three separate assistant messages in the chat.
+
+**Important notes:**
+- **Begin tokens are required** for multiple messages to work correctly. Each message must start with `{"type": "begin"}`
+- If begin tokens are missing, the integration will gracefully degrade by concatenating all content into a single message
+- Empty messages (end token without content) are automatically skipped
+- The stream continues until the HTTP connection closes
+- Home Assistant displays a waiting indicator between messages (after end, before the next begin)
+- For AI Tasks, multiple messages are concatenated into one result
+- This feature is opt-in and disabled by default
+- When disabled, the stream stops at the first `{"type": "end"}` (original behavior)
+
+**Use cases:**
+- Show progress through multi-step workflows
+- Report intermediate results from API calls
+- Provide status updates during long operations
+- Display thinking/reasoning steps before final answer
+
+### Text-to-Speech (TTS) Streaming Optimization
+
+When using the Webhook Conversation integration with Home Assistant's voice assistant pipeline and TTS, understanding how TTS streaming works is crucial for optimal user experience.
+
+#### TTS Streaming Threshold
+
+Home Assistant requires **at least 60 characters** of text before starting TTS streaming. This threshold ensures efficient caching and prevents excessive TTS API calls for very short responses.
+
+**What this means for your webhook responses:**
+
+- Messages under 60 characters will buffer until more content arrives
+- Once the combined content exceeds 60 characters, TTS starts immediately
+- All subsequent content is spoken as it arrives
+
+#### Optimizing Your Webhook for Immediate TTS
+
+To ensure TTS starts immediately without delays, structure your webhook responses so that the **first message is at least 60 characters**:
+
+**❌ Bad - Will Delay TTS:**
+```json
+{"type": "begin"}
+{"type": "item", "content": "thinking"}
+{"type": "end"}
+```
+Only 8 characters - TTS will wait for more content.
+
+**✅ Good - Immediate TTS:**
+```json
+{"type": "begin"}
+{"type": "item", "content": "I'm processing your request, this will take just a moment please..."}
+{"type": "end"}
+```
+72 characters - TTS starts immediately!
+
+#### Message Separator Configuration
+
+The `tts_message_separator` option controls how multiple messages are joined for TTS playback. This creates natural pauses between logical message sections.
+
+**Configuration Options:**
+
+- **`". "` (default)** - Natural sentence pause
+  - Example: "Processing your request. Here's the result"
+  - TTS: "Processing your request" [pause] "Here's the result"
+
+- **`" ... "` - Longer dramatic pause
+  - Example: "Processing your request ... Here's the result"
+  - TTS: "Processing your request" [longer pause] "Here's the result"
+
+- **`" "`** - Minimal pause
+  - Example: "Processing your request Here's the result"
+  - TTS: Continuous speech with very brief natural pause
+
+- **Custom phrases** - Any text you want
+  - Example with `", and now, "`: "Processing your request, and now, Here's the result"
+
+**Configuring the separator:**
+
+1. Go to **Settings** → **Devices & Services**
+2. Find your Webhook Conversation integration
+3. Click **Configure** on your conversation agent
+4. Set **Message separator for TTS** to your preferred value
+
+#### Best Practices for n8n Workflows
+
+**Structure your messages for optimal TTS:**
+
+```javascript
+// Instead of:
+const firstMessage = "thinking";  // Too short!
+
+// Use descriptive status messages:
+const firstMessage = "Let me analyze your question, this may take a few seconds...";  // 65 chars ✓
+
+// Or provide context:
+const firstMessage = `Processing your request about ${topic}, one moment please...`;  // 60+ chars ✓
+
+// Or be naturally verbose:
+const firstMessage = "I'm working on that right now, I'll have an answer for you shortly...";  // 77 chars ✓
+```
+
+**Example: Multi-step workflow with immediate TTS**
+
+```json
+{"type": "begin"}
+{"type": "item", "content": "I'm searching through your smart home devices now, please wait a moment..."}
+{"type": "end"}
+
+{"type": "begin"}
+{"type": "item", "content": "I found 5 lights in the living room and they're currently on"}
+{"type": "end"}
+
+{"type": "begin"}
+{"type": "item", "content": "I've turned off all the lights for you"}
+{"type": "end"}
+```
+
+**Timeline:**
+- 0ms: First message arrives (75 chars) → TTS starts immediately
+- 200ms: "I'm searching..." starts playing
+- 3000ms: Second message arrives → Continues TTS with natural pause
+- 6000ms: Third message arrives → Spoken immediately
+
+#### Technical Details
+
+- Multiple messages are streamed continuously to maintain a single TTS connection
+- Wyoming protocol's sentence boundary detection (pySBD) automatically creates natural pauses within long responses
+- The message separator creates explicit pause points between logical message boundaries
+- All messages appear as a single continuous stream in the UI for optimal TTS performance
 
 #### Example n8n Streaming Setup
 

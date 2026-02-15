@@ -20,17 +20,19 @@ from homeassistant.helpers.entity import Entity
 from .const import (
     CONF_AUTH_TYPE,
     CONF_ENABLE_STREAMING,
+    CONF_ENFORCE_SENTENCE_TERMINATORS,
     CONF_OUTPUT_FIELD,
     CONF_PASSWORD,
     CONF_PROMPT,
-    CONF_STREAMING_END_VALUE,
+    CONF_STREAMING_MULTIPLE_MESSAGES,
     CONF_TIMEOUT,
     CONF_USERNAME,
     CONF_WEBHOOK_URL,
     DEFAULT_AUTH_TYPE,
     DEFAULT_ENABLE_STREAMING,
+    DEFAULT_ENFORCE_SENTENCE_TERMINATORS,
     DEFAULT_OUTPUT_FIELD,
-    DEFAULT_STREAMING_END_VALUE,
+    DEFAULT_STREAMING_MULTIPLE_MESSAGES,
     DEFAULT_TIMEOUT,
     DOMAIN,
     MANUFACTURER,
@@ -92,8 +94,11 @@ class WebhookConversationLLMBaseEntity(WebhookConversationBaseEntity):
         self._streaming_enabled: bool = subentry.data.get(
             CONF_ENABLE_STREAMING, DEFAULT_ENABLE_STREAMING
         )
-        self._streaming_end_value: str = subentry.data.get(
-            CONF_STREAMING_END_VALUE, DEFAULT_STREAMING_END_VALUE
+        self._streaming_multiple_messages: bool = subentry.data.get(
+            CONF_STREAMING_MULTIPLE_MESSAGES, DEFAULT_STREAMING_MULTIPLE_MESSAGES
+        )
+        self._enforce_sentence_terminators: bool = subentry.data.get(
+            CONF_ENFORCE_SENTENCE_TERMINATORS, DEFAULT_ENFORCE_SENTENCE_TERMINATORS
         )
 
     async def _send_payload(self, payload: WebhookConversationPayload) -> Any:
@@ -131,7 +136,7 @@ class WebhookConversationLLMBaseEntity(WebhookConversationBaseEntity):
 
     async def _send_payload_streaming(
         self, payload: WebhookConversationPayload
-    ) -> AsyncGenerator[str]:
+    ) -> AsyncGenerator[tuple[str, str | None]]:
         """Send the payload to the webhook and stream the response."""
         _LOGGER.debug("Webhook streaming request: %s", payload)
 
@@ -151,19 +156,34 @@ class WebhookConversationLLMBaseEntity(WebhookConversationBaseEntity):
                     f"Error contacting webhook: HTTP {response.status} - {response.reason}"
                 )
 
+            first_message = True
+
             async for line in response.content:
                 if line:
                     line_str = line.decode("utf-8").strip()
                     if line_str:
                         try:
                             chunk_data = json.loads(line_str)
-                            if (
+                            
+                            if chunk_data.get("type") == "begin":
+                                # Begin tokens are tracked but don't emit anything
+                                # for continuous streaming mode
+                                first_message = False
+                                
+                            elif (
                                 chunk_data.get("type") == "item"
                                 and "content" in chunk_data
                             ):
-                                yield chunk_data["content"]
-                            elif chunk_data.get("type") == self._streaming_end_value:
-                                break
+                                yield ("content", chunk_data["content"])
+                                
+                            elif chunk_data.get("type") == "end":
+                                if not self._streaming_multiple_messages:
+                                    # Original behavior: stop at first end token
+                                    break
+                                # For multi-message mode, emit end_message signal
+                                # so conversation.py can check for sentence terminators
+                                yield ("end_message", None)
+                                    
                         except json.JSONDecodeError:
                             _LOGGER.warning(
                                 "Failed to parse streaming response chunk: %s", line_str

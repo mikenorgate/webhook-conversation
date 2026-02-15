@@ -150,12 +150,48 @@ class WebhookConversationEntity(
     async def _transform_webhook_stream(
         self, payload: WebhookConversationPayload
     ) -> AsyncIterator[conversation.AssistantContentDeltaDict]:
-        """Transform webhook streaming content into HA format."""
+        """Transform webhook stream to conversation deltas.
+        
+        TTS Streaming Architecture:
+        1. Yield role once at conversation start
+        2. Yield content deltas immediately as they arrive (no buffering)
+        3. At message boundaries (end token), ensure sentence terminator present
+        4. HA Wyoming TTS sends each delta as SynthesizeChunk to Wyoming server
+        5. wyoming_openai (when TTS_STREAMING_MODELS configured) uses pySBD
+           for sentence boundary detection and incremental synthesis
+        
+        For architecture details, see ARCHITECTURE.md
+        """
+        # Yield role once to establish assistant message
         yield {"role": "assistant"}
-
-        async for content_delta in self._send_payload_streaming(payload):
-            _LOGGER.debug("Webhook streaming response: %s", content_delta)
-            yield {"content": content_delta}
+        
+        # Track last content for terminator enforcement
+        last_content = ""
+        
+        # Stream content deltas immediately
+        async for item_type, content in self._send_payload_streaming(payload):
+            if item_type == "content" and content:
+                # Yield immediately for streaming (no buffering)
+                _LOGGER.debug("Yielding content delta: %d chars", len(content))
+                yield {"content": content}
+                last_content = content
+                
+            elif item_type == "end_message":
+                # Message boundary - ensure terminator present
+                _LOGGER.debug("Message boundary detected")
+                
+                if self._enforce_sentence_terminators and last_content:
+                    # Check if last content ended with terminator
+                    last_char = last_content.rstrip()[-1] if last_content.rstrip() else ""
+                    if last_char not in '.!?':
+                        _LOGGER.debug(
+                            "Adding period at message boundary for TTS: last content was '%s...'",
+                            last_content[:50]
+                        )
+                        yield {"content": "."}
+                
+                # Reset for next message
+                last_content = ""
 
     def _get_exposed_entities(self) -> list[dict[str, Any]]:
         states = [

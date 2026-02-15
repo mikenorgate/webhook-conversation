@@ -76,10 +76,13 @@ class WebhookAITaskEntity(WebhookConversationLLMBaseEntity, ai_task.AITaskEntity
             )
 
         if self._streaming_enabled:
-            reply_parts = [
-                content_chunk
-                async for content_chunk in self._send_payload_streaming(payload)
-            ]
+            reply_parts = []
+            async for item_type, content in self._send_payload_streaming(payload):
+                if item_type == "content":
+                    reply_parts.append(content)
+                elif item_type == "end_message":
+                    # For AI tasks, ignore message boundaries and collect all content
+                    pass
             reply = "".join(reply_parts)
         else:
             reply = await self._send_payload(payload)
