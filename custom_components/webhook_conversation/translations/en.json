@@ -19,7 +19,7 @@
             "auth_type": "Authentication type"
           },
           "data_description": {
-            "streaming_multiple_messages": "Allow the webhook to send multiple separate assistant messages in one streaming response. Each message is separated by a {\"type\": \"end\"} token.",
+            "streaming_multiple_messages": "Allow the webhook to send multiple separate assistant messages in one streaming response. Each message is separated by a {{\"type\": \"end\"}} token.",
             "enforce_sentence_terminators": "Automatically add periods to messages that don't end with . ! or ? - critical for optimal TTS streaming with wyoming_openai pySBD sentence detection"
           }
         },
